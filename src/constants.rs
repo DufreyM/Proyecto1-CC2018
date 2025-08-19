@@ -1,0 +1,23 @@
+pub const WIDTH: usize = 800;
+pub const HEIGHT: usize = 600;
+
+pub const MAP_W: usize = 24;
+pub const MAP_H: usize = 24;
+
+// Tiles
+pub const TILE_EMPTY: i32 = 0;
+pub const TILE_WALL:  i32 = 1; // fuego
+pub const TILE_EXIT:  i32 = 9; // meta
+
+#[inline]
+pub const fn rgb(r: u8, g: u8, b: u8) -> u32 {
+    ((r as u32) << 16) | ((g as u32) << 8) | (b as u32)
+}
+
+#[inline]
+pub fn shade(color: u32, factor: f64) -> u32 {
+    let r = ((color >> 16) & 0xFF) as f64;
+    let g = ((color >> 8) & 0xFF) as f64;
+    let b = ( color        & 0xFF) as f64;
+    rgb((r * factor) as u8, (g * factor) as u8, (b * factor) as u8)
+}
