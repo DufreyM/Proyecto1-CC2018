@@ -1,4 +1,4 @@
-use crate::constants::{WIDTH, HEIGHT, rgb, shade, TILE_EXIT, TILE_WALL};
+use crate::constants::{WIDTH, HEIGHT, rgb, shade, TILE_EXIT};
 use crate::textures::TextureSet;
 use crate::world::WorldMap;
 
@@ -66,12 +66,12 @@ pub fn raycast(
         let delta_dist_x = if ray_dir_x == 0.0 { f64::INFINITY } else { (1.0 / ray_dir_x).abs() };
         let delta_dist_y = if ray_dir_y == 0.0 { f64::INFINITY } else { (1.0 / ray_dir_y).abs() };
 
-        let (mut step_x, mut side_dist_x) = if ray_dir_x < 0.0 {
+        let (step_x, mut side_dist_x) = if ray_dir_x < 0.0 {
             (-1, (px - map_x as f64) * delta_dist_x)
         } else {
             ( 1, (map_x as f64 + 1.0 - px) * delta_dist_x)
         };
-        let (mut step_y, mut side_dist_y) = if ray_dir_y < 0.0 {
+        let (step_y, mut side_dist_y) = if ray_dir_y < 0.0 {
             (-1, (py - map_y as f64) * delta_dist_y)
         } else {
             ( 1, (map_y as f64 + 1.0 - py) * delta_dist_y)

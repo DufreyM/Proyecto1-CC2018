@@ -38,7 +38,7 @@ pub fn load_or_fire(path: &str, w_fallback: usize, h_fallback: usize) -> Texture
         let mut data = vec![0; w*h];
         for y in 0..h {
             for x in 0..w {
-                let t = (y as f64 / h as f64);
+                let t = y as f64 / h as f64;
                 // gradiente naranja -> rojo
                 let r = (220.0 + 35.0 * (1.0 - t)) as u8;
                 let g = (60.0 + 80.0 * (1.0 - t)) as u8;
