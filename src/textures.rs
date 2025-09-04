@@ -53,9 +53,36 @@ pub fn load_or_fire(path: &str, w_fallback: usize, h_fallback: usize) -> Texture
     }
 }
 
+// NUEVO: sky fallback (degradé celeste) o carga desde archivo
+pub fn load_or_sky(path: &str, w: usize, h: usize) -> Texture {
+    if let Ok(img) = image::open(path) {
+        let img = img.to_rgb8();
+        let (iw, ih) = img.dimensions();
+        let mut data = Vec::with_capacity((iw * ih) as usize);
+        for p in img.pixels() {
+            data.push(((p[0] as u32) << 16) | ((p[1] as u32) << 8) | (p[2] as u32));
+        }
+        Texture { w: iw as usize, h: ih as usize, data }
+    } else {
+        // Degradé celeste (fallback)
+        let w = w.max(64);
+        let h = h.max(32);
+        let mut data = vec![0; w*h];
+        for y in 0..h {
+            let t = y as f64 / (h as f64 - 1.0);
+            let r = (110.0 + 20.0 * (1.0 - t)) as u8;
+            let g = (150.0 + 40.0 * (1.0 - t)) as u8;
+            let b = (220.0 + 35.0 * (1.0 - t)) as u8;
+            for x in 0..w { data[y*w + x] = ((r as u32)<<16)|((g as u32)<<8)|(b as u32); }
+        }
+        Texture { w, h, data }
+    }
+}
+
 pub struct TextureSet {
     pub wall_fire_a: Texture,
     pub wall_fire_b: Texture,
+    pub sky: Texture,
 }
 
 impl TextureSet {
@@ -63,6 +90,9 @@ impl TextureSet {
         Self {
             wall_fire_a: load_or_fire("assets/fire_brick.png", 128, 128),
             wall_fire_b: load_or_fire("assets/magma.png", 128, 128),
+            // NUEVO: intenta cargar assets/cielo.jpg
+            sky: load_or_sky("assets/cielo.jpg", 1024, 256),
         }
     }
 }
+

@@ -4,20 +4,21 @@ mod player;
 mod textures;
 mod render;
 mod hud;
-mod audio; 
+mod audio;
+mod sprites; // <-- NUEVO
 
 use minifb::{Key, Window, WindowOptions, MouseMode};
 use std::time::{Duration, Instant};
 
-use constants::{WIDTH, HEIGHT, rgb, TILE_EXIT};
+use constants::{WIDTH, HEIGHT, TILE_EXIT};
 use player::Player;
-use world::{gym_fuego};
+use world::gym_fuego;
 use textures::TextureSet;
 use audio::Audio;
+use sprites::SpriteManager; // <-- NUEVO
 
 #[derive(Copy, Clone, PartialEq)]
 enum GameState { Menu, Playing, Win }
-
 const MOUSE_SENS: f64 = 0.004;
 
 fn main() {
@@ -27,21 +28,22 @@ fn main() {
         WindowOptions { resize: false, scale: minifb::Scale::X1, ..WindowOptions::default() }
     ).unwrap();
 
-    window.set_target_fps(60);
+    window.limit_update_rate(Some(Duration::from_micros(16_667)));
 
     let mut buffer = vec![0u32; WIDTH * HEIGHT];
+    let mut zbuffer = vec![0.0f64; WIDTH];        // <-- NUEVO
     let mut state = GameState::Menu;
 
     let world_map = gym_fuego();
     let mut p = Player::new();
     let textures = TextureSet::load();
 
-    // === AUDIO ===
-    let audio = Audio::new();         // Música de fondo arranca acá
-    let mut step_timer: f64 = 0.0;    // SFX pasos
-
-    // === MOUSE ===
+    let mut audio = Audio::new();
+    let mut step_timer: f64 = 0.0;
     let mut last_mouse_x: Option<f32> = None;
+
+    // === SPRITES ===
+    let mut sprites = SpriteManager::new_fire_gym(); // pokébola cerca de la meta
 
     let mut last = Instant::now();
     let mut fps_timer = Instant::now();
@@ -55,17 +57,13 @@ fn main() {
 
         if window.is_key_down(Key::Escape) { break; }
 
-        // -------- ROTACIÓN CON MOUSE (Solo horizontal) --------
-        if let Some((mx, _my)) = window.get_mouse_pos(MouseMode::Pass) {
+        // Mouse horizontal
+        if let Some((mx, _)) = window.get_mouse_pos(MouseMode::Pass) {
             if let Some(prev_x) = last_mouse_x {
-                let dx = (mx - prev_x) as f64;
-                if dx.abs() > 0.0 {
-                    p.rotate(dx * MOUSE_SENS);
-                }
+                p.rotate((mx - prev_x) as f64 * MOUSE_SENS);
             }
             last_mouse_x = Some(mx);
         }
-        // ------------------------------------------------------
 
         match state {
             GameState::Menu => {
@@ -74,60 +72,60 @@ fn main() {
             }
             GameState::Playing => {
                 let move_speed = 4.0 * dt;
-                let rot_speed = 2.8 * dt;
+                let rot_speed  = 2.8 * dt;
 
-                // Movimiento con teclado
+                // Movimiento + SFX pasos
                 let mut moving = false;
                 if window.is_key_down(Key::W) { p.try_move(move_speed,  p.dir_x,  p.dir_y, &world_map); moving = true; }
                 if window.is_key_down(Key::S) { p.try_move(-move_speed, p.dir_x,  p.dir_y, &world_map); moving = true; }
-                let perp_x = -p.dir_y; let perp_y = p.dir_x;
-                if window.is_key_down(Key::A) { p.try_move(move_speed,  perp_x,  perp_y, &world_map); moving = true; }
-                if window.is_key_down(Key::D) { p.try_move(move_speed, -perp_x, -perp_y, &world_map); moving = true; }
+                let px = -p.dir_y; let py = p.dir_x;
+                if window.is_key_down(Key::A) { p.try_move(move_speed,  px,  py, &world_map); moving = true; }
+                if window.is_key_down(Key::D) { p.try_move(move_speed, -px, -py, &world_map); moving = true; }
 
-                // Rotación con flechas (opcional, además del mouse)
                 if window.is_key_down(Key::Left)  { p.rotate(-rot_speed); }
                 if window.is_key_down(Key::Right) { p.rotate( rot_speed); }
 
-                // SFX pasos cada ~0.38s mientras te mueves
                 if moving {
                     step_timer += dt;
-                    if step_timer > 0.38 {
-                        audio.play_step();
-                        step_timer = 0.0;
-                    }
-                } else {
-                    step_timer = 0.0;
-                }
+                    if step_timer > 0.38 { audio.play_step(); step_timer = 0.0; }
+                } else { step_timer = 0.0; }
 
-                // Render
-                render::clear_bg(&mut buffer);
-                render::raycast(&mut buffer, &world_map, &textures, p.x, p.y, p.dir_x, p.dir_y, p.plane_x, p.plane_y, 8.0, 0.15);
+                // Update sprites
+                sprites.update(dt);
+
+                // Render paredes + zbuffer
+                render::clear_bg(&mut buffer, &textures.sky, p.dir_x, p.dir_y);
+                render::raycast(&mut buffer, &mut zbuffer, &world_map, &textures,
+                                p.x, p.y, p.dir_x, p.dir_y, p.plane_x, p.plane_y,
+                                8.0, 0.15);
+
+                // Render sprites (con oclusión)
+                render::draw_sprites(&mut buffer, &zbuffer,
+                                     p.x, p.y, p.dir_x, p.dir_y, p.plane_x, p.plane_y,
+                                     &sprites, 0.20);
+
+                // Minimap
                 hud::draw_minimap(&mut buffer, &world_map, p.x, p.y, p.dir_x, p.dir_y);
 
-                // Win al pisar salida
+                // Win
                 let tx = p.x as usize; let ty = p.y as usize;
                 if world_map[ty][tx] == TILE_EXIT {
-                    audio.play_win(); // <-- SFX Victoria
+                    audio.play_win();
                     state = GameState::Win;
                 }
             }
             GameState::Win => {
                 draw_win(&mut buffer);
-                if window.is_key_down(Key::Enter) {
-                    p = Player::new();
-                    state = GameState::Playing;
-                }
+                if window.is_key_down(Key::Enter) { p = Player::new(); state = GameState::Playing; }
             }
         }
 
-        // FPS en título
+        // FPS
         frames += 1;
-        if fps_timer.elapsed() >= Duration::from_secs(1) {
-            fps = frames; frames = 0; fps_timer = Instant::now();
-        }
+        if fps_timer.elapsed() >= Duration::from_secs(1) { fps = frames; frames = 0; fps_timer = Instant::now(); }
         let title = match state {
             GameState::Menu => format!("Gimnasio Fuego - FPS: {fps} | Enter para iniciar"),
-            GameState::Playing => format!("Gimnasio Fuego - FPS: {fps} | W/A/S/D moverte, ←→ girar, mouse rotación"),
+            GameState::Playing => format!("Gimnasio Fuego - FPS: {fps} | Mouse rotación, W/A/S/D moverte"),
             GameState::Win => format!("Gimnasio Fuego - FPS: {fps} | ¡Ganaste! Enter para reiniciar"),
         };
         window.set_title(&title);
@@ -135,6 +133,8 @@ fn main() {
         if window.update_with_buffer(&mut buffer, WIDTH, HEIGHT).is_err() { break; }
     }
 }
+
+// draw_menu / draw_win quedan igual
 
 fn draw_menu(buf: &mut [u32]) {
     // Pokéball simple en fondo oscuro
