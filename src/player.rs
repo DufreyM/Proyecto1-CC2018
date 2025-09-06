@@ -1,3 +1,4 @@
+use crate::constants::PLAYER_MAX_HP;
 use crate::constants::{MAP_H, MAP_W};
 use crate::world::{is_passable, WorldMap};
 
@@ -5,6 +6,8 @@ pub struct Player {
     pub x: f64, pub y: f64,
     pub dir_x: f64, pub dir_y: f64,
     pub plane_x: f64, pub plane_y: f64,
+    pub hp: i32,
+    pub invuln: f64,
 }
 
 impl Player {
@@ -13,6 +16,8 @@ impl Player {
             x: 12.0, y: 12.0,
             dir_x: -1.0, dir_y: 0.0,
             plane_x: 0.0, plane_y: 0.66,
+            hp: PLAYER_MAX_HP,
+            invuln: 0.0,
         }
     }
 
@@ -38,6 +43,16 @@ impl Player {
         if ny >= 0.0 && ny < (MAP_H as f64) {
             let tile = map[ny as usize][self.x as usize];
             if is_passable(tile) { self.y = ny; }
+        }
+    }
+
+    pub fn tick(&mut self, dt: f64) {
+        if self.invuln > 0.0 { self.invuln -= dt; }
+    }
+    pub fn damage(&mut self, amount: i32) {
+        if self.invuln <= 0.0 {
+            self.hp = (self.hp - amount).max(0);
+            self.invuln = 0.6; // 600 ms de i-frames
         }
     }
 }

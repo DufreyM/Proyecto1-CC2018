@@ -35,3 +35,6 @@ pub fn alpha_blend(bg: u32, fg: u32, a: u8) -> u32 {
     let b = (fb*ar + bb*br) / 255;
     (r << 16) | (g << 8) | b
 }
+
+pub const TILE_HAZARD: i32 = 7;        // “lava” que hace daño al pisarla
+pub const PLAYER_MAX_HP: i32 = 100;    // vida máxima
