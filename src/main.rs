@@ -38,7 +38,8 @@ fn main() {
     let world_map = gym_fuego();
     let mut p = Player::new();
     let textures = TextureSet::load();
-
+    let mut muted = false;
+    let mut prev_m_down = false;
     let mut audio = Audio::new();
     let mut step_timer: f64 = 0.0;
     let mut last_mouse_x: Option<f32> = None;
@@ -73,6 +74,13 @@ fn main() {
         // Ticks de jugador/efectos
         p.tick(dt);
         if damage_flash > 0.0 { damage_flash -= dt; }
+        
+        let m_down = window.is_key_down(Key::M);
+        if m_down && !prev_m_down {
+            muted = audio.toggle_muted();
+        }
+        prev_m_down = m_down;
+
 
         match state {
             GameState::Menu => {
@@ -159,12 +167,13 @@ fn main() {
 
         // FPS
         frames += 1;
+        let mute_tag = if muted { " [MUTE]" } else { "" };
         if fps_timer.elapsed() >= Duration::from_secs(1) { fps = frames; frames = 0; fps_timer = Instant::now(); }
         let title = match state {
-            GameState::Menu   => format!("Gimnasio Fuego - FPS: {fps} | Enter para iniciar"),
-            GameState::Playing=> format!("Gimnasio Fuego - FPS: {fps} | Mouse rotación, W/A/S/D moverte"),
-            GameState::Win    => format!("Gimnasio Fuego - FPS: {fps} | ¡Ganaste! Enter para reiniciar"),
-            GameState::Dead   => format!("Gimnasio Fuego - FPS: {fps} | ¡Derrotado! Enter para reintentar"),
+            GameState::Menu   => format!("Gimnasio Fuego - FPS: {fps} {mute_tag} | Enter para iniciar"),
+            GameState::Playing=> format!("Gimnasio Fuego - FPS: {fps} {mute_tag} | Mouse rotación, W/A/S/D moverte"),
+            GameState::Win    => format!("Gimnasio Fuego - FPS: {fps} {mute_tag} | ¡Ganaste! Enter para reiniciar"),
+            GameState::Dead   => format!("Gimnasio Fuego - FPS: {fps} {mute_tag} | ¡Derrotado! Enter para reintentar"),
         };
         window.set_title(&title);
 
