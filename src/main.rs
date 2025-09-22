@@ -1,5 +1,3 @@
-// src/main.rs
-
 mod constants;
 mod world;
 mod player;
@@ -22,6 +20,9 @@ use sprites::SpriteManager;
 #[derive(Copy, Clone, PartialEq)]
 enum GameState { Menu, Playing, Win, Dead }
 
+// NEW: opciones de nivel (puedes renombrar y luego mapearlos a distintos mapas)
+const LEVELS: &[&str] = &["FUEGO", "FUEGO DURO", "FUEGO EXTREMO"];
+
 const MOUSE_SENS: f64 = 0.004;
 
 fn main() {
@@ -37,7 +38,8 @@ fn main() {
     let mut zbuffer = vec![0.0f64; WIDTH];
     let mut state = GameState::Menu;
 
-    let world_map = gym_fuego();
+    // NEW: world_map ahora es mutable porque lo cambiaremos según el nivel
+    let mut world_map = gym_fuego();
     let mut p = Player::new();
     let textures = TextureSet::load();
 
@@ -66,6 +68,11 @@ fn main() {
     let mut frames = 0u32;
     let mut fps = 0u32;
 
+    // NEW: estado del menú (selección + debounce)
+    let mut selected_level: usize = 0;
+    let mut prev_up = false;
+    let mut prev_down = false;
+
     while window.is_open() {
         let now = Instant::now();
         let dt = (now - last).as_secs_f64();
@@ -73,7 +80,7 @@ fn main() {
 
         if window.is_key_down(Key::Escape) { break; }
 
-        // Mouse horizontal (relativo pobre con minifb, pero suficiente)
+        // Mouse horizontal
         if let Some((mx, _)) = window.get_mouse_pos(MouseMode::Pass) {
             if let Some(prev_x) = last_mouse_x {
                 p.rotate((mx - prev_x) as f64 * MOUSE_SENS);
@@ -95,8 +102,33 @@ fn main() {
 
         match state {
             GameState::Menu => {
-                draw_menu(&mut buffer);
-                if window.is_key_down(Key::Enter) { state = GameState::Playing; }
+                // NEW: dibuja el menú con niveles
+                draw_menu_levels(&mut buffer, selected_level, LEVELS);
+
+                // Navegación ↑ / ↓ con debounce
+                let up = window.is_key_down(Key::Up);
+                let down = window.is_key_down(Key::Down);
+
+                if up && !prev_up {
+                    selected_level = if selected_level == 0 {
+                        LEVELS.len() - 1
+                    } else {
+                        selected_level - 1
+                    };
+                }
+                if down && !prev_down {
+                    selected_level = (selected_level + 1) % LEVELS.len();
+                }
+                prev_up = up;
+                prev_down = down;
+
+                // Enter: cargar nivel seleccionado
+                if window.is_key_down(Key::Enter) {
+                    world_map = build_level(selected_level); // NEW
+                    p = Player::new();
+                    sprites = SpriteManager::new_fire_gym(); // cambia aquí si tienes sprites por nivel
+                    state = GameState::Playing;
+                }
             }
             GameState::Playing => {
                 let move_speed = 4.0 * dt;
@@ -123,8 +155,8 @@ fn main() {
                 if world_map[ty][tx] == TILE_HAZARD {
                     hazard_tick += dt;
                     if hazard_tick >= 0.5 {
-                        p.damage(12);       // ~24/seg en lava
-                        damage_flash = 0.5; // overlay rojo
+                        p.damage(12);
+                        damage_flash = 0.5;
                         hazard_tick = 0.0;
                     }
                 } else {
@@ -152,28 +184,6 @@ fn main() {
                                      p.x, p.y, p.dir_x, p.dir_y, p.plane_x, p.plane_y,
                                      &sprites, 0.20);
 
-                // === Overlay de lava: intensidad según cercanía a celdas TILE_HAZARD ===
-                let mut near_lava = false;
-                let mut best_d2 = 1.0e9_f64;
-                let px_i = p.x.floor() as i32;
-                let py_i = p.y.floor() as i32;
-
-                for yy in (py_i - 3)..=(py_i + 3) {
-                    if yy < 0 || yy >= MAP_H as i32 { continue; }
-                    for xx in (px_i - 3)..=(px_i + 3) {
-                        if xx < 0 || xx >= MAP_W as i32 { continue; }
-                        if world_map[yy as usize][xx as usize] == TILE_HAZARD {
-                            near_lava = true;
-                            let cx = xx as f64 + 0.5;
-                            let cy = yy as f64 + 0.5;
-                            let dx = p.x - cx;
-                            let dy = p.y - cy;
-                            let d2 = dx*dx + dy*dy;
-                            if d2 < best_d2 { best_d2 = d2; }
-                        }
-                    }
-                }
-                
                 // HUD
                 hud::draw_minimap(&mut buffer, &world_map, p.x, p.y, p.dir_x, p.dir_y);
                 hud::draw_health_bar(&mut buffer, p.hp, PLAYER_MAX_HP);
@@ -195,7 +205,7 @@ fn main() {
             GameState::Dead => {
                 draw_dead(&mut buffer);
                 if window.is_key_down(Key::Enter) {
-                    p = Player::new(); // vida al máximo
+                    p = Player::new();
                     state = GameState::Playing;
                 }
             }
@@ -206,7 +216,7 @@ fn main() {
         if fps_timer.elapsed() >= Duration::from_secs(1) { fps = frames; frames = 0; fps_timer = Instant::now(); }
         let mute_tag = if muted { " [MUTE]" } else { "" };
         let title = match state {
-            GameState::Menu   => format!("Gimnasio Fuego - FPS: {fps}{mute_tag} | Enter para iniciar"),
+            GameState::Menu   => format!("Gimnasio Fuego - FPS: {fps}{mute_tag} | ↑/↓ elegir nivel • Enter jugar"),
             GameState::Playing=> format!("Gimnasio Fuego - FPS: {fps}{mute_tag} | Mouse rotación, W/A/S/D moverte"),
             GameState::Win    => format!("Gimnasio Fuego - FPS: {fps}{mute_tag} | ¡Ganaste! Enter para reiniciar"),
             GameState::Dead   => format!("Gimnasio Fuego - FPS: {fps}{mute_tag} | ¡Derrotado! Enter para reintentar"),
@@ -217,10 +227,24 @@ fn main() {
     }
 }
 
-// ======= Pantallas simples =======
+// ========= Helpers =========
 
-fn draw_menu(buf: &mut [u32]) {
+// NEW: construye el mapa según el índice del nivel.
+// Por ahora todos usan el mismo; cuando tengas más, cambia aquí.
+fn build_level(idx: usize) -> [[i32; MAP_W]; MAP_H] {
+    match idx {
+        0 => gym_fuego(),
+        1 => gym_fuego(), // TODO: world::gym_fuego_duro()
+        2 => gym_fuego(), // TODO: world::gym_fuego_extremo()
+        _ => gym_fuego(),
+    }
+}
+
+// NEW: menú con lista de niveles
+fn draw_menu_levels(buf: &mut [u32], selected: usize, options: &[&str]) {
     use constants::{rgb, WIDTH, HEIGHT};
+
+    // Fondo estilo anterior (círculo bicolor)
     for y in 0..HEIGHT {
         for x in 0..WIDTH {
             let cx = x as i32 - (WIDTH as i32 / 2);
@@ -233,12 +257,39 @@ fn draw_menu(buf: &mut [u32]) {
             buf[y * WIDTH + x] = color;
         }
     }
+
+    // Banda central oscura
     let band_h = 10usize; let mid = HEIGHT/2;
     for y in (mid - band_h)..(mid + band_h) {
         let row = y * WIDTH;
         for x in 0..WIDTH { buf[row + x] = rgb(10,10,12); }
     }
+
+    // Título
+    let title_scale = (HEIGHT / 70).max(3);
+    hud::draw_text_centered(buf, "SELECCIONA NIVEL", HEIGHT/6, title_scale, rgb(255,255,255));
+
+    // Opciones
+    let opt_scale = (HEIGHT / 90).max(3);
+    let total = options.len() as i32;
+    let start_y = (HEIGHT as i32 / 2) - ((total * (8*opt_scale as i32)) / 2);
+
+    for (i, name) in options.iter().enumerate() {
+        let y = (start_y + i as i32 * (8 * opt_scale as i32)) as usize;
+        if i == selected {
+            // resaltado
+            hud::draw_text_centered(buf, &format!("> {} <", name), y, opt_scale, rgb(255,230,120));
+        } else {
+            hud::draw_text_centered(buf, name, y, opt_scale, rgb(230,230,230));
+        }
+    }
+
+    // Pie de ayuda
+    let hint_scale = (HEIGHT / 110).max(2);
+    hud::draw_text_centered(buf, "↑/↓ ELEGIR  •  ENTER JUGAR  •  ESC SALIR", (HEIGHT*5)/6, hint_scale, rgb(230,230,230));
 }
+
+// ======= Pantallas de victoria y derrota ya existentes =======
 
 fn draw_win(buf: &mut [u32]) {
     use constants::{rgb, WIDTH, HEIGHT};
@@ -251,6 +302,11 @@ fn draw_win(buf: &mut [u32]) {
         buf[y*WIDTH] = rgb(255,255,255);
         buf[y*WIDTH + (WIDTH-1)] = rgb(255,255,255);
     }
+    let scale = (HEIGHT / 80).max(3);
+    let y_main = HEIGHT/2 - (7*scale)/2;
+    hud::draw_text_centered(buf, "GANASTE", y_main, scale, rgb(0,0,0));
+    let y_sub = y_main + (7*scale) + (6*scale/5);
+    hud::draw_text_centered(buf, "ENTER PARA REINICIAR", y_sub, scale.saturating_sub(1).max(2), rgb(0,0,0));
 }
 
 fn draw_dead(buf: &mut [u32]) {
@@ -264,4 +320,7 @@ fn draw_dead(buf: &mut [u32]) {
         buf[y*WIDTH] = rgb(255,255,255);
         buf[y*WIDTH + (WIDTH-1)] = rgb(255,255,255);
     }
+    let scale = (HEIGHT / 80).max(3);
+    let y_main = HEIGHT/2 - (7*scale)/2;
+    hud::draw_text_centered(buf, "PERDISTE BUH", y_main, scale, rgb(255,255,255));
 }
