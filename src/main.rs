@@ -1,3 +1,5 @@
+// src/main.rs
+
 mod constants;
 mod world;
 mod player;
@@ -10,7 +12,7 @@ mod sprites;
 use minifb::{Key, Window, WindowOptions, MouseMode};
 use std::time::{Duration, Instant};
 
-use constants::{WIDTH, HEIGHT, TILE_EXIT, TILE_HAZARD, PLAYER_MAX_HP};
+use constants::{WIDTH, HEIGHT, MAP_W, MAP_H, TILE_EXIT, TILE_HAZARD, PLAYER_MAX_HP};
 use player::Player;
 use world::gym_fuego;
 use textures::TextureSet;
@@ -38,19 +40,27 @@ fn main() {
     let world_map = gym_fuego();
     let mut p = Player::new();
     let textures = TextureSet::load();
+
+    // Audio (con toggle mute)
+    let mut audio = Audio::new();
     let mut muted = false;
     let mut prev_m_down = false;
-    let mut audio = Audio::new();
+
+    // Timers varios
     let mut step_timer: f64 = 0.0;
     let mut last_mouse_x: Option<f32> = None;
 
-    // === SPRITES ===
-    let mut sprites = SpriteManager::new_fire_gym(); // pokébola cerca de la meta
+    // Sprites
+    let mut sprites = SpriteManager::new_fire_gym();
 
-    // === Daño/vida ===
+    // Vida/daño
     let mut damage_flash: f64 = 0.0; // 0..0.5s para overlay
-    let mut hazard_tick: f64 = 0.0;  // acumulador para ticks de lava
+    let mut hazard_tick: f64 = 0.0;  // ticks de lava
 
+    // Overlay de lava (animación)
+    let mut lava_phase: f64 = 0.0;
+
+    // FPS
     let mut last = Instant::now();
     let mut fps_timer = Instant::now();
     let mut frames = 0u32;
@@ -63,7 +73,7 @@ fn main() {
 
         if window.is_key_down(Key::Escape) { break; }
 
-        // Mouse horizontal
+        // Mouse horizontal (relativo pobre con minifb, pero suficiente)
         if let Some((mx, _)) = window.get_mouse_pos(MouseMode::Pass) {
             if let Some(prev_x) = last_mouse_x {
                 p.rotate((mx - prev_x) as f64 * MOUSE_SENS);
@@ -71,16 +81,17 @@ fn main() {
             last_mouse_x = Some(mx);
         }
 
-        // Ticks de jugador/efectos
+        // Ticks jugador/efectos
         p.tick(dt);
         if damage_flash > 0.0 { damage_flash -= dt; }
-        
+        lava_phase += dt;
+
+        // Toggle MUTE (tecla M, con debounce)
         let m_down = window.is_key_down(Key::M);
         if m_down && !prev_m_down {
             muted = audio.toggle_muted();
         }
         prev_m_down = m_down;
-
 
         match state {
             GameState::Menu => {
@@ -112,8 +123,8 @@ fn main() {
                 if world_map[ty][tx] == TILE_HAZARD {
                     hazard_tick += dt;
                     if hazard_tick >= 0.5 {
-                        p.damage(12);       // ~24 por segundo en lava
-                        damage_flash = 0.5; // activa overlay
+                        p.damage(12);       // ~24/seg en lava
+                        damage_flash = 0.5; // overlay rojo
                         hazard_tick = 0.0;
                     }
                 } else {
@@ -125,11 +136,14 @@ fn main() {
                     state = GameState::Dead;
                 }
 
-                // Update sprites
+                // Sprites
                 sprites.update(dt);
 
-                // Render
+                // Render 3D
                 render::clear_bg(&mut buffer, &textures.sky, p.dir_x, p.dir_y);
+                render::floorcast(&mut buffer, &world_map,
+                  p.x, p.y, p.dir_x, p.dir_y, p.plane_x, p.plane_y,
+                  lava_phase);
                 render::raycast(&mut buffer, &mut zbuffer, &world_map, &textures,
                                 p.x, p.y, p.dir_x, p.dir_y, p.plane_x, p.plane_y,
                                 8.0, 0.15);
@@ -138,6 +152,28 @@ fn main() {
                                      p.x, p.y, p.dir_x, p.dir_y, p.plane_x, p.plane_y,
                                      &sprites, 0.20);
 
+                // === Overlay de lava: intensidad según cercanía a celdas TILE_HAZARD ===
+                let mut near_lava = false;
+                let mut best_d2 = 1.0e9_f64;
+                let px_i = p.x.floor() as i32;
+                let py_i = p.y.floor() as i32;
+
+                for yy in (py_i - 3)..=(py_i + 3) {
+                    if yy < 0 || yy >= MAP_H as i32 { continue; }
+                    for xx in (px_i - 3)..=(px_i + 3) {
+                        if xx < 0 || xx >= MAP_W as i32 { continue; }
+                        if world_map[yy as usize][xx as usize] == TILE_HAZARD {
+                            near_lava = true;
+                            let cx = xx as f64 + 0.5;
+                            let cy = yy as f64 + 0.5;
+                            let dx = p.x - cx;
+                            let dy = p.y - cy;
+                            let d2 = dx*dx + dy*dy;
+                            if d2 < best_d2 { best_d2 = d2; }
+                        }
+                    }
+                }
+                
                 // HUD
                 hud::draw_minimap(&mut buffer, &world_map, p.x, p.y, p.dir_x, p.dir_y);
                 hud::draw_health_bar(&mut buffer, p.hp, PLAYER_MAX_HP);
@@ -165,15 +201,15 @@ fn main() {
             }
         }
 
-        // FPS
+        // FPS + estado de mute en el título
         frames += 1;
-        let mute_tag = if muted { " [MUTE]" } else { "" };
         if fps_timer.elapsed() >= Duration::from_secs(1) { fps = frames; frames = 0; fps_timer = Instant::now(); }
+        let mute_tag = if muted { " [MUTE]" } else { "" };
         let title = match state {
-            GameState::Menu   => format!("Gimnasio Fuego - FPS: {fps} {mute_tag} | Enter para iniciar"),
-            GameState::Playing=> format!("Gimnasio Fuego - FPS: {fps} {mute_tag} | Mouse rotación, W/A/S/D moverte"),
-            GameState::Win    => format!("Gimnasio Fuego - FPS: {fps} {mute_tag} | ¡Ganaste! Enter para reiniciar"),
-            GameState::Dead   => format!("Gimnasio Fuego - FPS: {fps} {mute_tag} | ¡Derrotado! Enter para reintentar"),
+            GameState::Menu   => format!("Gimnasio Fuego - FPS: {fps}{mute_tag} | Enter para iniciar"),
+            GameState::Playing=> format!("Gimnasio Fuego - FPS: {fps}{mute_tag} | Mouse rotación, W/A/S/D moverte"),
+            GameState::Win    => format!("Gimnasio Fuego - FPS: {fps}{mute_tag} | ¡Ganaste! Enter para reiniciar"),
+            GameState::Dead   => format!("Gimnasio Fuego - FPS: {fps}{mute_tag} | ¡Derrotado! Enter para reintentar"),
         };
         window.set_title(&title);
 
@@ -181,7 +217,7 @@ fn main() {
     }
 }
 
-// draw_menu / draw_win se mantienen
+// ======= Pantallas simples =======
 
 fn draw_menu(buf: &mut [u32]) {
     use constants::{rgb, WIDTH, HEIGHT};

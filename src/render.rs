@@ -1,4 +1,10 @@
-use crate::constants::{WIDTH, HEIGHT, rgb, shade, TILE_EXIT};
+// src/render.rs
+
+use crate::constants::{
+    WIDTH, HEIGHT, MAP_W, MAP_H,
+    rgb, shade,
+    TILE_EXIT, TILE_WALL, TILE_HAZARD,
+};
 use crate::textures::{TextureSet, Texture};
 use crate::world::WorldMap;
 use crate::sprites::SpriteManager;
@@ -9,8 +15,7 @@ fn clamp_i32(v: i32, lo: i32, hi: i32) -> i32 {
     if v < lo { lo } else if v > hi { hi } else { v }
 }
 
-/// Dibuja cielo desde textura (top) y piso “lava” (bottom).
-/// `dir_x/dir_y` controlan el desplazamiento horizontal del cielo (parallax).
+/// Solo dibuja el CIELO (parte superior). El piso lo pinta `floorcast`.
 pub fn clear_bg(buf: &mut [u32], sky: &Texture, dir_x: f64, dir_y: f64) {
     let half = HEIGHT / 2;
 
@@ -28,15 +33,102 @@ pub fn clear_bg(buf: &mut [u32], sky: &Texture, dir_x: f64, dir_y: f64) {
         }
     }
 
-    // --- PISO ---
+    // Relleno base oscuro para el piso (será sobrescrito por floorcast)
+    let base = rgb(28, 24, 30);
     for y in half..HEIGHT {
-        let t = (y - half) as f64 / half as f64;
-        let r = (100.0 + 100.0*t) as u8;
-        let g = (40.0  +  40.0*t) as u8;
-        let b = (30.0  +  10.0*t) as u8;
-        let color = rgb(r,g,b);
         let row = y * WIDTH;
-        for x in 0..WIDTH { buf[row + x] = color; }
+        for x in 0..WIDTH { buf[row + x] = base; }
+    }
+}
+
+/// Floor casting plano por tiles:
+/// - `TILE_HAZARD` (lava) = naranja animado.
+/// - otros = piso rocoso oscuro.
+/// Debe llamarse **antes** de `raycast` para que las paredes pasen encima.
+pub fn floorcast(
+    buf: &mut [u32],
+    map: &WorldMap,
+    px: f64, py: f64,
+    dir_x: f64, dir_y: f64,
+    plane_x: f64, plane_y: f64,
+    time_sec: f64,
+) {
+    let half = (HEIGHT / 2) as i32;
+
+    // Rayos a los extremos de la pantalla (izq/der)
+    let ray0_x = dir_x - plane_x;
+    let ray0_y = dir_y - plane_y;
+    let ray1_x = dir_x + plane_x;
+    let ray1_y = dir_y + plane_y;
+
+    let pos_z = (HEIGHT as f64) * 0.5; // distancia a plano de proyección
+
+    for y in half..(HEIGHT as i32) {
+        // Distancia del "scanline" al centro
+        let p = y - half;
+        if p <= 0 { continue; }
+
+        // Distancia del piso a lo largo de ese scanline
+        let row_dist = pos_z / (p as f64);
+
+        // Paso en mundo por pixel en X
+        let step_x = row_dist * (ray1_x - ray0_x) / (WIDTH as f64);
+        let step_y = row_dist * (ray1_y - ray0_y) / (WIDTH as f64);
+
+        // Punto inicial (mundo) del scanline
+        let mut world_x = px + row_dist * ray0_x;
+        let mut world_y = py + row_dist * ray0_y;
+
+        let row_idx = (y as usize) * WIDTH;
+
+        for x in 0..WIDTH {
+            let ix = world_x.floor() as i32;
+            let iy = world_y.floor() as i32;
+
+            let color = if ix >= 0 && iy >= 0 && (ix as usize) < MAP_W && (iy as usize) < MAP_H {
+                let tile = map[iy as usize][ix as usize];
+
+                // Coordenadas fraccionales dentro del tile (para ruido simple)
+                let fx = world_x - ix as f64;
+                let fy = world_y - iy as f64;
+
+                match tile {
+                    TILE_HAZARD => {
+                        // Lava animada (anaranjado brillante)
+                        let s = ((fx * 12.0 + time_sec * 2.4).sin()
+                            * (fy * 12.0 - time_sec * 1.8).cos()).abs();
+                        let heat = 0.65 + 0.35 * s; // 0.65..1.0
+                        let r = (210.0 + 45.0 * heat) as u8;   // 210..255
+                        let g = (70.0  + 120.0 * heat) as u8;  // 70..190
+                        let b = (20.0  + 30.0  * heat) as u8;  // 20..50
+                        rgb(r, g, b)
+                    }
+                    _ => {
+                        // Basalto oscuro con ruido leve
+                        let n = ( (fx * 8.0).sin() * (fy * 8.0).sin() * 0.15 + 0.85 )
+                            .clamp(0.0, 1.0);
+                        let r = (32.0 * n) as u8;
+                        let g = (30.0 * n) as u8;
+                        let b = (38.0 * n) as u8;
+                        rgb(r, g, b)
+                    }
+                }
+            } else {
+                // Fuera de mapa -> piso oscuro
+                rgb(24, 20, 26)
+            };
+
+            // Atenuación por distancia para dar profundidad
+            let dist = row_dist.max(0.001);
+            let light = (1.15 / (1.0 + 0.10 * dist)).clamp(0.15, 1.0);
+            let shaded = shade(color, light);
+
+            let idx = row_idx + x;
+            if idx < buf.len() { buf[idx] = shaded; }
+
+            world_x += step_x;
+            world_y += step_y;
+        }
     }
 }
 
@@ -61,7 +153,7 @@ pub fn line(buf: &mut [u32], x0: usize, y0: usize, x1: usize, y1: usize, color: 
     }
 }
 
-/// Render principal con raycasting + texturas + “linterna”.
+/// Raycaster de paredes (solo TILE_WALL).
 pub fn raycast(
     buf: &mut [u32],
     zbuf: &mut [f64],
@@ -95,6 +187,7 @@ pub fn raycast(
             ( 1, (map_y as f64 + 1.0 - py) * delta_dist_y)
         };
 
+        // DDA – solo pared real
         let mut hit_tile = 0;
         let mut side = 0; // 0 = x, 1 = y
         while hit_tile == 0 {
@@ -103,8 +196,24 @@ pub fn raycast(
             } else {
                 side_dist_y += delta_dist_y; map_y += step_y; side = 1;
             }
+
+            // Evitar leer fuera del mapa
+            if map_x < 0 || map_x >= MAP_W as i32 || map_y < 0 || map_y >= MAP_H as i32 {
+                break; // rayo salió del mapa
+            }
+
             let cell = map[map_y as usize][map_x as usize];
-            if cell != 0 && cell != TILE_EXIT { hit_tile = cell; }
+
+            if cell == TILE_WALL {
+                hit_tile = TILE_WALL;
+            }
+            // Lava y salida NO son pared
+        }
+
+        // Si no golpeó pared, saltamos columna
+        if hit_tile == 0 {
+            zbuf[x] = f64::INFINITY;
+            continue;
         }
 
         let perp_dist = if side == 0 {
@@ -225,6 +334,7 @@ pub fn draw_sprites(
     }
 }
 
+/// Overlay rojo para feedback de daño (opcional).
 pub fn draw_damage_overlay(buf: &mut [u32], intensity: f32) {
     if intensity <= 0.0 { return; }
     let a = intensity.clamp(0.0, 1.0) as f64; // 0..1
