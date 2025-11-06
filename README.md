@@ -6,8 +6,12 @@ Este proyecto consiste en el desarrollo de un **videojuego interactivo**, implem
 Fue diseñado para ejecutar de forma estable alrededor de **60 FPS**, integrando efectos visuales, audio ambiental, cámara libre y elementos de interfaz como minimapa y pantallas de transición.
 
 El juego fue **implementado en hardware distinto a una computadora tradicional**, demostrando su versatilidad y capacidad de optimización.  
-Ejemplo: ejecutado en una Raspberry Pi, microcontrolador con salida HDMI o dispositivo embebido con GPU integrada.
-
+Prueba: ejecutado en una Raspberry Pi.
+Para probarlo en una Raspberry tienen que hacer: 
+sudo apt update
+sudo apt install libraylib-dev libgl1-mesa-dev libegl1-mesa-dev libasound2-dev
+cargo run --release
+La bandera de --release es para que les sea más fluido por las limitaciones de raspberry
 ---
 
 ## Características Implementadas
@@ -55,13 +59,13 @@ Se implementó un efecto visual especial, elegido según la temática del juego:
 
 ### 7. Música y Sonido ( +15 pts )
 - **Música de fondo** ambiental acorde al tema del nivel (+5 pts).
-- **Efectos de sonido** para acciones (pasos, daño, apertura de puertas, colisiones, etc.) (+10 pts).
+- **Efectos de sonido** para acciones (pasos) (+10 pts).
 
 ---
 
 ### 8. Animaciones ( +20 pts )
 - Implementación de **animaciones en sprites**.  
-  Ejemplo: movimiento del jugador, enemigos o elementos del entorno (fuego, agua, luces, etc.).
+  Ejemplo: movimiento del jugador, enemigos o elementos del entorno (fuego).
 - Animaciones sincronizadas con la lógica del juego (colisiones, daño, interacción).
 
 ---
@@ -87,7 +91,6 @@ Se implementó un efecto visual especial, elegido según la temática del juego:
 
 - FPS promedio: **60**
 - Soporte para **teclado, mouse y control**
-- Interfaz adaptable a resoluciones **720p o 1080p**
 - Audio y texturas optimizadas para carga rápida
 
 ---
@@ -97,6 +100,7 @@ Se implementó un efecto visual especial, elegido según la temática del juego:
 1. Compila el proyecto o ejecuta el binario principal.
    cargo run 
 2. Conecta el control (opcional).
+- Puedes cliquear M para mutear la música, que cuando lo iba haciendo me cansé de la musica y lo agregue jajaja
 3. Desde la pantalla inicial, selecciona un nivel.
 4. Explora el entorno, evita daño y completa los objetivos.
 5. Al ganar, se mostrará la pantalla de éxito.
