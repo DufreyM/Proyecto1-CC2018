@@ -1,5 +1,8 @@
 # Proyecto Final — Videojuego Interactivo con Cámara, Minimap y Efectos Visuales
 
+# Video 
+https://www.canva.com/design/DAG386QLs_c/V_ZyySGJNb6wDCGWvxTiVg/watch?utm_content=DAG386QLs_c&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=h6824217fb8 
+
 ## Descripción General
 
 Este proyecto consiste en el desarrollo de un **videojuego interactivo**, implementado con enfoque en **rendimiento, estética visual, control fluido y elementos inmersivos**.  
