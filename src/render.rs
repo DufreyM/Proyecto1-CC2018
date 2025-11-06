@@ -2,8 +2,7 @@
 
 use crate::constants::{
     WIDTH, HEIGHT, MAP_W, MAP_H,
-    rgb, shade,
-    TILE_EXIT, TILE_WALL, TILE_HAZARD,
+    rgb, shade, TILE_WALL, TILE_HAZARD,
 };
 use crate::textures::{TextureSet, Texture};
 use crate::world::WorldMap;

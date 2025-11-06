@@ -1,4 +1,4 @@
-use crate::constants::{rgb, alpha_blend};
+use crate::constants::rgb;
 use image::GenericImageView;
 
 pub struct SpriteFrame {
