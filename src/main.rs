@@ -232,7 +232,7 @@ if window.is_key_down(Key::Enter) {
 
                 // Win
                 if world_map[ty][tx] == TILE_EXIT {
-                    audio.play_win();
+                    // audio.play_win();
                     state = GameState::Win;
                 }
             }
