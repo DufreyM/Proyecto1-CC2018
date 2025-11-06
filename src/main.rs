@@ -237,19 +237,21 @@ if window.is_key_down(Key::Enter) {
                 }
             }
             GameState::Win => {
-                draw_win(&mut buffer);
-                if window.is_key_down(Key::Enter) {
-                    p = Player::new();
-                    state = GameState::Playing;
-                }
-            }
-            GameState::Dead => {
-                draw_dead(&mut buffer);
-                if window.is_key_down(Key::Enter) {
-                    p = Player::new();
-                    state = GameState::Playing;
-                }
-            }
+    draw_win(&mut buffer, &textures);
+    if window.is_key_down(Key::Space) || window.is_key_down(Key::M) {
+        p = Player::new();
+        state = GameState::Menu;
+    }
+}
+
+GameState::Dead => {
+    draw_dead(&mut buffer, &textures);
+    if window.is_key_down(Key::Space) || window.is_key_down(Key::M) {
+        p = Player::new();
+        state = GameState::Menu;
+    }
+}
+
         }
 
         // FPS + estado de mute en el título
@@ -422,36 +424,103 @@ fn draw_menu_levels(buf: &mut [u32], selected: usize, options: &[&str]) {
 
 // ======= Pantallas de victoria y derrota ya existentes =======
 
-fn draw_win(buf: &mut [u32]) {
+fn draw_win(buf: &mut [u32], textures: &textures::TextureSet) {
     use constants::{rgb, WIDTH, HEIGHT};
-    for p in buf.iter_mut() { *p = rgb(30,200,120); }
+
+    // 🔥 Fondo: usa la textura wall_fire_a como “fuego”
+    let fire = &textures.wall_fire_a;
+
+    for y in 0..HEIGHT {
+        for x in 0..WIDTH {
+            let tx = (x * fire.w / WIDTH) as usize;
+            let ty = (y * fire.h / HEIGHT) as usize;
+            let color = fire.data[ty * fire.w + tx];
+            buf[y * WIDTH + x] = color;
+        }
+    }
+
+    // 🔦 Oscurecer un poco para resaltar texto
+    for px in buf.iter_mut() {
+        let (r, g, b) = ((*px >> 16) & 0xFF, (*px >> 8) & 0xFF, *px & 0xFF);
+        let r = (r as f32 * 0.6) as u32;
+        let g = (g as f32 * 0.6) as u32;
+        let b = (b as f32 * 0.6) as u32;
+        *px = (r << 16) | (g << 8) | b;
+    }
+
+    // 🧱 Marco blanco
     for x in 0..WIDTH {
-        buf[x] = rgb(255,255,255);
-        buf[(HEIGHT-1)*WIDTH + x] = rgb(255,255,255);
+        buf[x] = rgb(255, 255, 255);
+        buf[(HEIGHT - 1) * WIDTH + x] = rgb(255, 255, 255);
     }
     for y in 0..HEIGHT {
-        buf[y*WIDTH] = rgb(255,255,255);
-        buf[y*WIDTH + (WIDTH-1)] = rgb(255,255,255);
+        buf[y * WIDTH] = rgb(255, 255, 255);
+        buf[y * WIDTH + (WIDTH - 1)] = rgb(255, 255, 255);
     }
+
+    // 📝 Texto central
     let scale = (HEIGHT / 80).max(3);
-    let y_main = HEIGHT/2 - (7*scale)/2;
-    hud::draw_text_centered(buf, "GANASTE", y_main, scale, rgb(0,0,0));
-    let y_sub = y_main + (7*scale) + (6*scale/5);
-    hud::draw_text_centered(buf, "ENTER PARA REINICIAR", y_sub, scale.saturating_sub(1).max(2), rgb(0,0,0));
+    let y_main = HEIGHT / 2 - (7 * scale) / 2;
+    hud::draw_text_centered(buf, "¡GANASTE!", y_main, scale + 1, rgb(255, 230, 120));
+
+    // 🧭 Subtexto
+    let y_sub = y_main + (7 * scale) + (6 * scale / 5);
+    hud::draw_text_centered(
+        buf,
+        "Presiona espacio o m para volver al menú",
+        y_sub,
+        scale.saturating_sub(1).max(2),
+        rgb(255, 255, 255),
+    );
 }
 
-fn draw_dead(buf: &mut [u32]) {
+
+fn draw_dead(buf: &mut [u32], textures: &textures::TextureSet) {
     use constants::{rgb, WIDTH, HEIGHT};
-    for px in buf.iter_mut() { *px = rgb(80, 0, 0); }
+
+    // 🔥 Fondo: usa la textura wall_fire_a como “fuego”
+    let fire = &textures.wall_fire_a;
+
+    for y in 0..HEIGHT {
+        for x in 0..WIDTH {
+            let tx = (x * fire.w / WIDTH) as usize;
+            let ty = (y * fire.h / HEIGHT) as usize;
+            let color = fire.data[ty * fire.w + tx];
+            buf[y * WIDTH + x] = color;
+        }
+    }
+
+    // 🔦 Oscurecer un poco para resaltar texto
+    for px in buf.iter_mut() {
+        let (r, g, b) = ((*px >> 16) & 0xFF, (*px >> 8) & 0xFF, *px & 0xFF);
+        let r = (r as f32 * 0.6) as u32;
+        let g = (g as f32 * 0.6) as u32;
+        let b = (b as f32 * 0.6) as u32;
+        *px = (r << 16) | (g << 8) | b;
+    }
+
+    // 🧱 Marco blanco
     for x in 0..WIDTH {
-        buf[x] = rgb(255,255,255);
-        buf[(HEIGHT-1)*WIDTH + x] = rgb(255,255,255);
+        buf[x] = rgb(255, 255, 255);
+        buf[(HEIGHT - 1) * WIDTH + x] = rgb(255, 255, 255);
     }
     for y in 0..HEIGHT {
-        buf[y*WIDTH] = rgb(255,255,255);
-        buf[y*WIDTH + (WIDTH-1)] = rgb(255,255,255);
+        buf[y * WIDTH] = rgb(255, 255, 255);
+        buf[y * WIDTH + (WIDTH - 1)] = rgb(255, 255, 255);
     }
+
+    // 📝 Texto central
     let scale = (HEIGHT / 80).max(3);
-    let y_main = HEIGHT/2 - (7*scale)/2;
-    hud::draw_text_centered(buf, "PERDISTE BUH", y_main, scale, rgb(255,255,255));
+    let y_main = HEIGHT / 2 - (7 * scale) / 2;
+    hud::draw_text_centered(buf, "¡PERDISTE!", y_main, scale + 1, rgb(255, 230, 120));
+
+    // 🧭 Subtexto
+    let y_sub = y_main + (7 * scale) + (6 * scale / 5);
+    hud::draw_text_centered(
+        buf,
+        "Presiona espacio o m para volver al menú",
+        y_sub,
+        scale.saturating_sub(1).max(2),
+        rgb(255, 255, 255),
+    );
 }
